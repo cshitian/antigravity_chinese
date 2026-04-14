@@ -90,4 +90,10 @@
 本项目基于开源项目 [Cursor_chinese](https://github.com/bjrzs/Cursor_chinese) 制作，感谢原作者的无私奉献。
 
 ---
-*Powered by Antigravity Assistant Team*
+## 友情链接
+
+感谢 **LinuxDo** 社区的支持！
+
+[![LinuxDo](https://img.shields.io/badge/社区-LinuxDo-blue?style=for-the-badge)](https://linux.do/)
+
+---
