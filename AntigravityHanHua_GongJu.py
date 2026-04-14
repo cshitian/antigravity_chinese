@@ -1,61 +1,130 @@
-import os
+import argparse
+import base64
 import json
-import hashlib
+import platform
+import re
 import shutil
 import sys
-import base64
-import argparse
+from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
 
-# ★★★ 用户配置区域 ★★★
-ANTIGRAVITY_AN_ZHUANG_LU_JING = r"D:\Antigravity"
+WINDOWS_DEFAULT_INSTALL_DIR = Path(r"D:/Antigravity")
+MACOS_DEFAULT_INSTALL_DIRS = (
+    Path("/Applications/Antigravity.app"),
+    Path("~/Applications/Antigravity.app").expanduser(),
+)
+APP_ROOT_SUFFIX = Path("Contents/Resources/app")
+WORKBENCH_RELATIVE_PATHS = (
+    Path("out/vs/code/electron-browser/workbench/workbench-jetski-agent.html"),
+    Path("out/vs/code/electron-browser/workbench/workbench.html"),
+)
+INJECT_SCRIPT_TAG = '<script src="../../../../ag_agent_hanhua.js"></script>'
 
-# 统一目标路径
-TARGET_FILES = [
-    r"resources\app\out\vs\code\electron-browser\workbench\workbench-jetski-agent.html",
-    r"resources\app\out\vs\code\electron-browser\workbench\workbench.html"
-]
 
-PRODUCT_JSON_PATH = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, r"resources\app\product.json")
-HAN_HUA_JS_PATH = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, r"resources\app\out\ag_agent_hanhua.js")
+@dataclass(frozen=True)
+class RuntimePaths:
+    app_root: Path
+    product_json_path: Path
+    han_hua_js_path: Path
+    target_files: tuple[Path, ...]
+
 
 def normalize_text(text):
-    import re
-    if not text: return ""
-    text = re.sub(r'\s+', ' ', text).strip()
-    text = text.replace('’', "'").replace('‘', "'").replace('“', '"').replace('”', '"')
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text).strip()
+    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
     return text
+
 
 def load_dictionary():
     total_map = {}
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    dicts_dir = os.path.join(script_dir, 'dicts')
-    if os.path.exists(dicts_dir):
-        for filename in os.listdir(dicts_dir):
-            if filename.endswith(".json"):
-                try:
-                    with open(os.path.join(dicts_dir, filename), 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        for k, v in data.items():
-                            norm_k = normalize_text(k)
-                            if norm_k: total_map[norm_k] = v
-                except Exception: pass
+    dicts_dir = Path(__file__).resolve().parent / "dicts"
+    if dicts_dir.exists():
+        for path in sorted(dicts_dir.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for key, value in data.items():
+                normalized_key = normalize_text(key)
+                if normalized_key:
+                    total_map[normalized_key] = value
     return total_map
 
-def generate_js():
-    """生成汉化注入脚本 V11.0 —— 强力扫描版（修复路径错误 + 支持多轮扫描）"""
+
+def is_valid_app_root(path):
+    return (path / "product.json").exists() and (path / "out").exists()
+
+
+def expand_candidate(candidate):
+    candidate = Path(candidate).expanduser()
+    candidate_str = str(candidate)
+    candidate_options = [candidate]
+    if candidate_str.endswith(".app"):
+        candidate_options.append(candidate / APP_ROOT_SUFFIX)
+    else:
+        candidate_options.append(candidate / "resources" / "app")
+    for option in candidate_options:
+        if is_valid_app_root(option):
+            return option
+    return None
+
+
+def format_missing_install_dir_error(tried_paths):
+    tried = "\n".join(f"- {path}" for path in tried_paths)
+    return (
+        f"未找到 Antigravity 安装目录。\n"
+        f"当前平台：{platform.system()}\n"
+        f"已尝试路径：\n{tried}\n"
+        "请使用 --install-dir 手动指定目录，例如：\n"
+        'python3 "AntigravityHanHua_GongJu.py" --install-dir "/Applications/Antigravity.app/Contents/Resources/app"'
+    )
+
+
+def resolve_install_dir(install_dir=None):
+    tried_paths = []
+    if install_dir:
+        tried_paths.append(Path(install_dir).expanduser())
+        resolved = expand_candidate(install_dir)
+        if resolved:
+            return resolved
+        raise FileNotFoundError(format_missing_install_dir_error(tried_paths))
+
+    candidates = [WINDOWS_DEFAULT_INSTALL_DIR]
+    if platform.system() == "Darwin":
+        candidates = list(MACOS_DEFAULT_INSTALL_DIRS)
+
+    for candidate in candidates:
+        tried_paths.append(Path(candidate).expanduser())
+        resolved = expand_candidate(candidate)
+        if resolved:
+            return resolved
+    raise FileNotFoundError(format_missing_install_dir_error(tried_paths))
+
+
+def build_runtime_paths(app_root):
+    app_root = Path(app_root).expanduser()
+    return RuntimePaths(
+        app_root=app_root,
+        product_json_path=app_root / "product.json",
+        han_hua_js_path=app_root / "out" / "ag_agent_hanhua.js",
+        target_files=tuple(app_root / relative_path for relative_path in WORKBENCH_RELATIVE_PATHS),
+    )
+
+
+def generate_js(paths):
     full_dict = load_dictionary()
-    long_entries = sorted(full_dict.items(), key=lambda x: len(x[0]), reverse=True)
+    long_entries = sorted(full_dict.items(), key=lambda item: len(item[0]), reverse=True)
     dict_json = json.dumps(full_dict, ensure_ascii=False, indent=4)
     entries_json = json.dumps(long_entries, ensure_ascii=False)
-
     js_source = """\
 (() => {
-    // V11.0 核心逻辑：修复路径加载，多轮次全页面扫描，深度兼容大小写
     const map = new Map(Object.entries(DICT_PLACEHOLDER));
-    // 建立一个全小写的索引，用于处理大小写不一致的情况
     const lowerMap = new Map();
     for (const [k, v] of map.entries()) lowerMap.set(k.toLowerCase(), v);
-    
+
     const longEntries = REPLACEMENT_ENTRIES_PLACEHOLDER;
     const done = new WeakSet();
 
@@ -70,7 +139,7 @@ def generate_js():
             if (node.nodeType === Node.ELEMENT_NODE) {
                 const tag = node.tagName.toUpperCase();
                 if (['SCRIPT', 'STYLE', 'CODE', 'PRE', 'INPUT', 'TEXTAREA'].includes(tag)) return;
-                
+
                 for (const attr of ['placeholder', 'title', 'aria-label']) {
                     const v = node.getAttribute(attr);
                     if (v) {
@@ -82,7 +151,6 @@ def generate_js():
 
                 if (node.shadowRoot) translateNode(node.shadowRoot);
                 for (const child of node.childNodes) translateNode(child);
-
             } else if (node.nodeType === Node.TEXT_NODE) {
                 let originalVal = node.nodeValue;
                 if (!originalVal || originalVal.trim().length < 1) return;
@@ -90,14 +158,12 @@ def generate_js():
                 let newVal = originalVal;
                 const valNorm = norm(originalVal);
                 const valLower = valNorm.toLowerCase();
-                
-                // 1. 精确匹配（含大小写自动纠正）
+
                 if (map.has(valNorm)) {
                     newVal = map.get(valNorm);
                 } else if (lowerMap.has(valLower)) {
                     newVal = lowerMap.get(valLower);
                 } else {
-                    // 2. 长句子串滑动替换
                     for (const [key, translated] of longEntries) {
                         if (key.length > 20 && valNorm.includes(key)) {
                             newVal = newVal.split(key).join(translated);
@@ -108,7 +174,7 @@ def generate_js():
                 if (newVal !== originalVal) {
                     node.nodeValue = newVal;
                     done.add(node);
-                    setTimeout(() => done.delete(node), 1000); 
+                    setTimeout(() => done.delete(node), 1000);
                 }
             }
         } catch (e) {}
@@ -140,103 +206,106 @@ def generate_js():
         return sr;
     };
 
-    // 多轮扫描策略：针对状态栏这种动态生成的元素
     setTimeout(startEngine, 300);
-    setTimeout(() => { if(document.body) translateNode(document.body); }, 1500);
-    setTimeout(() => { if(document.body) translateNode(document.body); }, 4000);
+    setTimeout(() => { if (document.body) translateNode(document.body); }, 1500);
+    setTimeout(() => { if (document.body) translateNode(document.body); }, 4000);
 })();
 """
     final_js = js_source.replace("DICT_PLACEHOLDER", dict_json).replace("REPLACEMENT_ENTRIES_PLACEHOLDER", entries_json)
-    with open(HAN_HUA_JS_PATH, 'w', encoding='utf-8') as f:
-        f.write(final_js)
+    paths.han_hua_js_path.parent.mkdir(parents=True, exist_ok=True)
+    paths.han_hua_js_path.write_text(final_js, encoding="utf-8")
 
-def inject_html(html_rel_path):
-    abs_path = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, html_rel_path)
-    if not os.path.exists(abs_path): return False
-    
-    with open(abs_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    
-    # 彻底修正为 4 层相对路径
-    inject_str = '<script src="../../../../ag_agent_hanhua.js"></script>'
-    
-    # 清理旧的（错误的）注入
-    import re
-    content = re.sub(r'<script.*ag_agent_hanhua\.js.*</script>', '', content)
-    
-    if '</body>' in content:
-        content = content.replace('</body>', f'{inject_str}</body>')
+
+def inject_html(target_path):
+    target_path = Path(target_path)
+    if not target_path.exists():
+        return False
+    content = target_path.read_text(encoding="utf-8")
+    content = re.sub(r'<script[^>]*ag_agent_hanhua\.js[^>]*></script>', "", content)
+    if "</body>" in content:
+        content = content.replace("</body>", f"{INJECT_SCRIPT_TAG}</body>")
     else:
-        content += inject_str
-        
-    with open(abs_path, 'w', encoding='utf-8') as f:
-        f.write(content)
+        content = f"{content}{INJECT_SCRIPT_TAG}"
+    target_path.write_text(content, encoding="utf-8")
     return True
 
-def update_checksums():
-    with open(PRODUCT_JSON_PATH, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    for rel_path in TARGET_FILES:
-        abs_path = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, rel_path)
-        if os.path.exists(abs_path):
-            key = rel_path.replace("\\", "/").replace("resources/app/out/", "")
-            sha256_hash = hashlib.sha256()
-            with open(abs_path, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096), b""):
-                    sha256_hash.update(byte_block)
-            data['checksums'][key] = base64.b64encode(sha256_hash.digest()).decode('utf-8').rstrip('=')
-    
-    with open(PRODUCT_JSON_PATH, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent='\t')
 
-def backup_files():
-    for rel_path in TARGET_FILES:
-        abs_path = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, rel_path)
-        bak_path = abs_path + ".bak"
-        if os.path.exists(abs_path) and not os.path.exists(bak_path):
-            shutil.copy2(abs_path, bak_path)
-            print(f"[备份] 已创建原始内容备份: {os.path.basename(abs_path)}.bak")
+def update_checksums(paths):
+    data = json.loads(paths.product_json_path.read_text(encoding="utf-8"))
+    checksums = data.setdefault("checksums", {})
+    out_root = paths.app_root / "out"
+    for target_path in paths.target_files:
+        if not target_path.exists():
+            continue
+        key = target_path.relative_to(out_root).as_posix()
+        checksums[key] = base64.b64encode(sha256(target_path.read_bytes()).digest()).decode("utf-8").rstrip("=")
+    paths.product_json_path.write_text(json.dumps(data, indent="\t"), encoding="utf-8")
 
-def restore_files():
+
+def backup_files(paths):
+    for target_path in paths.target_files:
+        backup_path = Path(f"{target_path}.bak")
+        if target_path.exists() and not backup_path.exists():
+            shutil.copy2(target_path, backup_path)
+            print(f"[备份] 已创建原始内容备份: {target_path.name}.bak")
+
+
+def restore_files(paths):
     print("====== 正在恢复 Antigravity 官方原版 ======")
     changed = False
-    for rel_path in TARGET_FILES:
-        abs_path = os.path.join(ANTIGRAVITY_AN_ZHUANG_LU_JING, rel_path)
-        bak_path = abs_path + ".bak"
-        if os.path.exists(bak_path):
-            shutil.copy2(bak_path, abs_path)
-            print(f"[还原] 已恢复: {os.path.basename(abs_path)}")
+    for target_path in paths.target_files:
+        backup_path = Path(f"{target_path}.bak")
+        if backup_path.exists():
+            shutil.copy2(backup_path, target_path)
+            print(f"[还原] 已恢复: {target_path.name}")
             changed = True
-    
-    if os.path.exists(HAN_HUA_JS_PATH):
-        os.remove(HAN_HUA_JS_PATH)
-        print(f"[还原] 已删除汉化核心脚本")
+    if paths.han_hua_js_path.exists():
+        paths.han_hua_js_path.unlink()
+        print("[还原] 已删除汉化核心脚本")
         changed = True
-        
     if changed:
-        update_checksums()
+        update_checksums(paths)
         print("[√] 校验值已同步，软件恢复至官方原始状态。")
     else:
         print("[!] 未找到备份文件，可能尚未安装过汉化。")
 
-def main():
-    parser = argparse.ArgumentParser(description="Antigravity 汉化工具")
-    parser.add_argument("--huifu", action="store_true", help="恢复官方原版")
-    args = parser.parse_args()
 
-    if args.huifu:
-        restore_files()
-        return
-
+def run_install(paths):
     print("====== Antigravity 强力修复 V11.0 (Global Scan) ======")
-    backup_files()
-    generate_js()
-    for html in TARGET_FILES:
-        if inject_html(html):
-            print(f"[√] 路径修正并注入: {os.path.basename(html)}")
-    update_checksums()
+    backup_files(paths)
+    generate_js(paths)
+    for target_path in paths.target_files:
+        if inject_html(target_path):
+            print(f"[√] 路径修正并注入: {target_path.name}")
+    update_checksums(paths)
     print("[√] 全局路径修复与深度引擎已部署")
 
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="Antigravity 汉化工具")
+    parser.add_argument("--huifu", action="store_true", help="恢复官方原版")
+    parser.add_argument(
+        "--install-dir",
+        help="Antigravity 安装目录，可传应用根目录或 resources/app 目录",
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        app_root = resolve_install_dir(args.install_dir)
+        paths = build_runtime_paths(app_root)
+        if args.huifu:
+            restore_files(paths)
+        else:
+            run_install(paths)
+        return 0
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
