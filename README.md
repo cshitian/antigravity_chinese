@@ -1,99 +1,218 @@
-# Antigravity 智能管理器 [中文语言包] 使用手册
+# Antigravity 智能管理器中文语言包
 
-> **版本**：v11.0 (Global Scan 版)  
-> **适用对象**：Antigravity Agent Manager (智能体管理器)  
-> **特性**：DOM 动态注入、全自动备份、一键还原、零核心破坏
-
----
-
-## 📖 项目简介
-
-本工具专为 Antigravity 设计，通过在应用层注入轻量级翻译引擎，将原本全英文的 **Agent Manager** 界面实时汉化。
-
-### 核心亮点
-- **动态扫描**：采用 MutationObserver 技术，实时监控并翻译动态加载的 UI 元素。
-- **安全可靠**：不修改软件二进制文件，仅在入口 HTML 添加一行引用。
-- **自动防损**：注入前自动创建 `.bak` 备份，支持随时从备份 100% 恢复。
-- **校验绕过**：自动更新 `product.json` 校验树，避免软件报修。
+> 适用对象：Antigravity Agent Manager
+> 支持平台：Windows / macOS
+> 方案特点：动态注入、自动备份、一键还原、尽量不碰核心二进制
 
 ---
 
-## 🛠️ 环境准备
+## 项目简介
 
-在开始汉化之前，请确保您的设备已满足以下条件：
-1. **Python 环境**：已安装 Python 3.x。
-2. **退出软件**：请确保 Antigravity 软件已完全关闭（由于涉及写入文件，建议检查任务管理器确保无残留进程）。
+本项目用于给 Antigravity 的 **Agent Manager** 界面做中文汉化。
 
----
+它的做法不是去硬改程序二进制，而是在 Antigravity 的 `resources/app/out` 目录里：
+- 生成一份汉化脚本 `ag_agent_hanhua.js`
+- 向工作台 HTML 注入一行 `<script>` 引用
+- 自动备份原始 HTML
+- 更新 `product.json` 中对应文件的校验值
 
-## 🚀 安装步骤 (一键汉化)
-
-只需三个简单步骤，即可享受中文界面：
-
-1. **第一步**：进入本工具目录。
-2. **第二步**：双击运行 **`ZhuRu_HanHua.bat`**。
-3. **第三步**：等待黑屏控制台显示 `[√] 全局路径修复与深度引擎已部署` 后，按任意键关闭。
-
-**立即生效**：现在启动 Antigravity，打开 Agent Manager 即可看到效果！
-
-> [!TIP]
-> **软件更新后失效怎么办？**  
-> 如果 Antigravity 进行了版本更新，汉化入口可能会被官方文件覆盖。此时您**只需再次运行一次 `ZhuRu_HanHua.bat`** 即可恢复。
+这样做的好处是：
+- 出问题能回滚
+- 官方更新后可重新执行
+- 对原始程序结构改动相对可控
 
 ---
 
-## 🔄 卸载与还原 (一键恢复)
+## 功能特性
 
-如果您需要删除汉化，回归官方原版，操作同样简单：
-
-1. **双击运行 `QingChu_HanHua.bat`**。
-2. 工具会自动通过 `.bak` 文件还原所有被修改的 HTML，并清理汉化核心脚本。
-3. 还原完成后，软件将回归完全原始的状态。
-
----
-
-## ⚙️ 进阶配置
-
-### 修改安装路径
-如果您的 Antigravity 安装在非默认位置（默认为 `D:\Antigravity`），请修改配置：
-
-1. 使用记事本或 VS Code 打开 `AntigravityHanHua_GongJu.py`。
-2. 找到第 9 行：`ANTIGRAVITY_AN_ZHUANG_LU_JING = r"D:\Antigravity"`。
-3. 将引号内的路径修改为您实际的安装目录，保存后重新运行注入脚本即可。
+- **动态扫描翻译**：通过 `MutationObserver` 处理动态渲染内容
+- **双平台支持**：Windows 和 macOS 都能直接执行
+- **自动备份**：首次注入时会生成 `.bak` 备份文件
+- **一键还原**：可恢复到官方原始状态
+- **路径自动探测**：支持默认路径探测，也支持手动指定安装目录
 
 ---
 
-## 📁 文件清单
+## 使用前准备
 
-| 文件名 | 作用 |
-| :--- | :--- |
-| `AntigravityHanHua_GongJu.py` | 核心引擎：处理备份、注入、生成 JS 及校验同步 |
-| `ZhuRu_HanHua.bat` | 一键注入入口：自动杀进程并触发汉化逻辑 |
-| `QingChu_HanHua.bat` | 一键还原入口：安全撤销所有修改 |
-| `dicts/` | 翻译字典目录：存放各模块对应的 JSON 字典 |
-| `README.md` | 您当前阅读的帮助手册 |
+开始前请先确认：
+
+1. 已安装 **Python 3**
+2. Antigravity 已完全退出
+3. 当前账号对 Antigravity 安装目录有写权限
 
 ---
 
-## ❓ 常见问题 (FAQ)
+## 默认安装目录
 
-> [!IMPORTANT]
-> **Q: 界面只有部分汉化了，有些还是英文？**  
-> A: 这通常是因为字典库尚未覆盖该部分文本。您可以手动编辑 `dicts/` 目录下的 JSON 文件增加翻译规则，我们的引擎支持热加载（重启软件生效）。
+### Windows
+- `D:\Antigravity`
+- 或其下的 `resources/app`
 
-> [!WARNING]
-> **Q: 运行脚本提示“拒绝访问”？**  
-> A: 请尝试以【管理员身份】运行批处理文件。
+### macOS
+- `/Applications/Antigravity.app`
+- `/Applications/Antigravity.app/Contents/Resources/app`
+- `~/Applications/Antigravity.app`
+- `~/Applications/Antigravity.app/Contents/Resources/app`
 
-## 💖 致谢
+---
+
+## 安装汉化
+
+### Windows
+
+直接双击：
+
+- `ZhuRu_HanHua.bat`
+
+如果 Antigravity 不在默认目录，也可以手动执行：
+
+```bash
+python "AntigravityHanHua_GongJu.py" --install-dir "D:\Antigravity"
+```
+
+### macOS
+
+首次使用前，先给脚本执行权限：
+
+```bash
+chmod +x "ZhuRu_HanHua.command" "QingChu_HanHua.command"
+```
+
+然后任选一种方式执行：
+
+```bash
+./ZhuRu_HanHua.command
+```
+
+或者直接双击 `ZhuRu_HanHua.command`
+
+如果 Antigravity 不在默认目录，可手动指定路径：
+
+```bash
+python3 "AntigravityHanHua_GongJu.py" --install-dir "/Applications/Antigravity.app"
+```
+
+执行完成后，重新启动 Antigravity，打开 Agent Manager 即可查看汉化效果。
+
+---
+
+## 还原官方原版
+
+### Windows
+
+直接双击：
+
+- `QingChu_HanHua.bat`
+
+或手动执行：
+
+```bash
+python "AntigravityHanHua_GongJu.py" --huifu --install-dir "D:\Antigravity"
+```
+
+### macOS
+
+执行：
+
+```bash
+./QingChu_HanHua.command
+```
+
+如果需要手动指定路径：
+
+```bash
+python3 "AntigravityHanHua_GongJu.py" --huifu --install-dir "/Applications/Antigravity.app"
+```
+
+还原时会：
+- 用 `.bak` 文件恢复原始 HTML
+- 删除 `ag_agent_hanhua.js`
+- 同步恢复后的 checksum
+
+---
+
+## 手动指定路径说明
+
+`--install-dir` 同时接受这两种形式：
+
+1. Antigravity 应用根目录
+   例如：
+   - Windows：`D:\Antigravity`
+   - macOS：`/Applications/Antigravity.app`
+
+2. `resources/app` 目录
+   例如：
+   - Windows：`D:\Antigravity\resources\app`
+   - macOS：`/Applications/Antigravity.app/Contents/Resources/app`
+
+---
+
+## 目录结构前提
+
+当前脚本默认 Antigravity 安装目录中存在以下结构：
+
+```text
+resources/app/
+├── product.json
+└── out/
+    └── vs/code/electron-browser/workbench/
+        ├── workbench.html
+        └── workbench-jetski-agent.html
+```
+
+如果官方后续改了目录结构，这套注入方式也得跟着调整。
+
+---
+
+## 文件说明
+
+| 文件 | 说明 |
+| --- | --- |
+| `AntigravityHanHua_GongJu.py` | 核心逻辑：路径解析、备份、注入、还原、checksum 更新 |
+| `ZhuRu_HanHua.bat` | Windows 安装入口 |
+| `QingChu_HanHua.bat` | Windows 还原入口 |
+| `ZhuRu_HanHua.command` | macOS 安装入口 |
+| `QingChu_HanHua.command` | macOS 还原入口 |
+| `dicts/` | 翻译字典 |
+
+---
+
+## 常见问题
+
+### 1）提示找不到安装目录
+
+别瞎猜，直接用 `--install-dir` 指定。
+
+macOS 示例：
+
+```bash
+python3 "AntigravityHanHua_GongJu.py" --install-dir "/Applications/Antigravity.app"
+```
+
+### 2）提示权限不足
+
+- Windows：尝试以管理员身份运行
+- macOS：确认当前用户对应用目录有写权限
+
+### 3）更新后汉化失效
+
+官方更新可能覆盖了工作台 HTML，重新执行一次安装脚本即可。
+
+### 4）只有部分文本被翻译
+
+说明字典还没覆盖全。可在 `dicts/` 目录中继续补充 JSON 翻译条目。
+
+---
+
+## 致谢
 
 本项目基于开源项目 [Cursor_chinese](https://github.com/bjrzs/Cursor_chinese) 制作，感谢原作者的无私奉献。
 
 ---
+
 ## 友情链接
 
 感谢 **LinuxDo** 社区的支持！
 
 [![LinuxDo](https://img.shields.io/badge/社区-LinuxDo-blue?style=for-the-badge)](https://linux.do/)
-
----

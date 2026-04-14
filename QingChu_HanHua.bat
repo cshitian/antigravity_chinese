@@ -11,7 +11,7 @@ timeout /t 2 /nobreak >nul
 
 echo.
 echo [2/3] Restoring Official Files...
-python "%~dp0AntigravityHanHua_GongJu.py" --huifu
+python "%~dp0AntigravityHanHua_GongJu.py" --huifu %*
 
 echo.
 echo [3/3] Restoration Complete!

@@ -11,7 +11,7 @@ timeout /t 2 /nobreak >nul
 
 echo.
 echo [2/3] Injecting Localization Core...
-python "%~dp0AntigravityHanHua_GongJu.py"
+python "%~dp0AntigravityHanHua_GongJu.py" %*
 
 echo.
 echo [3/3] Injection Complete!
