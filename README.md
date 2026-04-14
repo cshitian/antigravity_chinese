@@ -85,5 +85,9 @@
 > **Q: 运行脚本提示“拒绝访问”？**  
 > A: 请尝试以【管理员身份】运行批处理文件。
 
+## 💖 致谢
+
+本项目基于开源项目 [Cursor_chinese](https://github.com/bjrzs/Cursor_chinese) 制作，感谢原作者的无私奉献。
+
 ---
 *Powered by Antigravity Assistant Team*
